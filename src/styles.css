@@ -1,0 +1,181 @@
+:root {
+  --bg: #14121a;
+  --surface: #1e1b26;
+  --surface-2: #29253a;
+  --text: #f3f0fa;
+  --muted: #a39db5;
+  --accent: #ff5d73;
+  --focus: #4dd6c4;
+  --radius: 12px;
+  color-scheme: dark;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; }
+
+.app {
+  max-width: 820px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 24px 16px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.top h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.top h1 span { color: var(--accent); }
+.tagline { margin: 4px 0 20px; color: var(--muted); }
+
+main { flex: 1; padding-bottom: 24px; }
+
+.toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+
+.primary, .ghost {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.primary { border: none; background: var(--accent); color: #1a0d10; }
+.ghost { border: 1px solid var(--surface-2); background: transparent; color: var(--text); }
+.primary:disabled, .ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.primary:focus-visible, .ghost:focus-visible, .verse input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.editor { list-style: none; margin: 0; padding: 0; }
+.verse {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.2rem 1fr 2rem;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.verse-number, .syllable-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: right;
+}
+.syllable-count { text-align: left; }
+.verse input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+}
+.hint { color: var(--muted); font-size: 0.85rem; }
+
+.paste {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.paste textarea {
+  width: 100%;
+  min-height: 240px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+.paste textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.paste-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.lyrics {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.lyric {
+  margin: 0;
+  padding: 4px 0;
+  font-size: 1.2rem;
+  line-height: 1.9;
+  animation: verse-in 400ms ease-out both;
+  animation-delay: var(--verse-delay);
+}
+.stanza-break { height: 20px; }
+
+.rhyme {
+  padding: 2px 3px;
+  margin: 0 -1px;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  animation: rhyme-in 600ms ease-out both;
+  animation-delay: var(--delay);
+}
+
+@keyframes verse-in {
+  from { opacity: 0.25; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rhyme-in {
+  from { background-color: transparent; color: var(--text); box-shadow: 0 0 0 0 transparent; }
+  60% { box-shadow: 0 0 18px 2px var(--c); }
+  to { background-color: var(--c); color: #14121a; box-shadow: 0 0 0 0 transparent; }
+}
+
+.legend h2 { font-size: 1rem; margin: 28px 0 12px; }
+.legend ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.legend li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.chips { display: flex; gap: 4px; flex-shrink: 0; }
+.chip {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--c);
+  color: #14121a;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.legend-text { display: flex; flex-direction: column; min-width: 0; }
+.occurrences { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+
+.actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 0;
+  background: linear-gradient(transparent, var(--bg) 30%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric, .rhyme { animation-duration: 1ms; animation-delay: 0ms; }
+}
