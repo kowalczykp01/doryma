@@ -2,8 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { analyze } from './rhyme/analyze';
 import { VerseEditor } from './components/VerseEditor';
 import { RhymeView } from './components/RhymeView';
+import { TextNotices } from './components/TextNotices';
+import { Landing } from './components/Landing';
+import { checkText } from './rhyme/language';
+import { addPronunciation, type Reading } from './rhyme/pronunciation';
 
 const STORAGE_KEY = 'doryma.verses';
+const APP_HASH = '#/app';
+
+type Route = 'landing' | 'app';
+const currentRoute = (): Route => (window.location.hash.startsWith(APP_HASH) ? 'app' : 'landing');
 
 const SAMPLE = [
   'Nocą to miasto zasypia jak dziecko',
@@ -33,12 +41,14 @@ function loadVerses(): string[] {
 }
 
 export function App() {
+  const [route, setRoute] = useState<Route>(currentRoute);
   const [verses, setVerses] = useState<string[]>(loadVerses);
   const [mode, setMode] = useState<'edit' | 'paste' | 'view'>('edit');
   const [pasted, setPasted] = useState('');
   const [run, setRun] = useState(0);
   // A whole song takes a moment to analyze, so it runs only when the rhymes are shown, not on every keystroke.
   const analysis = useMemo(() => (mode === 'view' ? analyze(verses) : null), [mode, verses]);
+  const check = useMemo(() => (mode === 'view' ? checkText(verses) : null), [mode, verses]);
   const hasText = verses.some((v) => v.trim().length > 0);
 
   useEffect(() => {
@@ -48,6 +58,22 @@ export function App() {
       // Saving the draft is only a convenience.
     }
   }, [verses]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setRoute(currentRoute());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const openApp = () => {
+    setMode('edit');
+    window.location.hash = APP_HASH;
+  };
+  const pronounce = (verse: number, reading: Reading, spoken: string) =>
+    setVerses((all) => all.map((v, k) => (k === verse ? addPronunciation(v, reading, spoken) : v)));
 
   const openPaste = () => {
     setPasted(verses.join('\n'));
@@ -63,11 +89,31 @@ export function App() {
     setMode('view');
   };
 
+  if (route === 'landing') {
+    return (
+      <div className="app">
+        <header className="top top-landing">
+          <a className="logo" href="#/" aria-label="DoRyma, strona główna">
+            Do<span>Ryma</span>
+          </a>
+          <button type="button" className="ghost" onClick={openApp}>
+            Otwórz aplikację
+          </button>
+        </header>
+        <main>
+          <Landing onStart={openApp} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="top">
         <h1>
-          Do<span>Ryma</span>
+          <a className="logo" href="#/" aria-label="DoRyma, strona główna">
+            Do<span>Ryma</span>
+          </a>
         </h1>
         <p className="tagline">Kolorowanie rymów wielokrotnych w tekstach rapowych</p>
       </header>
@@ -110,14 +156,16 @@ export function App() {
             </div>
             <VerseEditor verses={verses} onChange={setVerses} />
             <p className="hint">
-              Enter = nowy wers, pusty wers oddziela zwrotki. Rymów szukamy w całym tekście.
+              Enter = nowy wers, pusty wers oddziela zwrotki. Rymów szukamy w czwórkach wersów i na ich styku.
               <br />
               Wymowę wpisz w gwiazdkach po wyrazach: <code>power point *pałer pojnt*</code>. Gwiazdki zastępują tyle
-              poprzednich wyrazów, ile same zawierają.
+              poprzednich wyrazów, ile same zawierają. Liczby czytamy automatycznie; inną wymowę dopisz za liczbą:{' '}
+              <code>w 2005 *dwa tysiące piątym*</code>.
             </p>
           </>
         )}
-        {mode === 'view' && analysis && <RhymeView key={run} analysis={analysis} />}
+        {mode === 'view' && check && <TextNotices check={check} />}
+        {mode === 'view' && analysis && <RhymeView key={run} analysis={analysis} onPronounce={pronounce} />}
       </main>
 
       <footer className="actions">

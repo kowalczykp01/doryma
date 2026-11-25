@@ -1,5 +1,5 @@
 import { rhymeClass, vowelsRhyme, type Syllable } from './syllables';
-import { prepareVerse } from './pronunciation';
+import { prepareVerse, type Reading } from './pronunciation';
 
 /** Only a safety limit: a rhyme may run through a whole verse ("flow co te brawa…" ~ "fonope stawia…"). */
 const MAX_RHYME_LENGTH = 40;
@@ -8,12 +8,16 @@ export interface Segment {
   text: string;
   color?: number;
   groupId?: number;
+  /** How the segment is read when the app read a number aloud by itself (P-04). */
+  reading?: string;
 }
 
 export interface AnalyzedVerse {
   text: string;
   syllableCount: number;
   segments: Segment[];
+  /** Numbers the app read aloud by itself (P-04); their pronunciation can be changed in the result. */
+  readings: Reading[];
 }
 
 export interface RhymeGroup {
@@ -126,6 +130,53 @@ const isWholeWord = (sylls: Syllable[], s: Span) =>
  * place in their verses ("się piekli" ~ "cie biednym" rather than "Nic mnie" ~ "bycie").
  */
 const SAME_VERSE_PENALTY = 0.5;
+
+const VERSES_PER_QUATRAIN = 4;
+
+interface BlockVerse {
+  verse: number;
+  sylls: Syllable[];
+  text: string;
+  quatrain: number;
+  /** Position among non-empty verses, so verses on both sides of a stanza break are neighbours. */
+  order: number;
+  /** Index of the syllable that ends the verse, before a closing adlib in parentheses (R-08). */
+  end: number;
+}
+
+/**
+ * R-08: text in parentheses at the end of a verse is usually an adlib in the background, so
+ * "że kochasz? (Wiem czemu)" ends on "kochasz". The adlib may still rhyme, but it does not end the verse.
+ */
+function lineEndOf(text: string, sylls: Syllable[]): number {
+  const adlib = /\([^()]*\)[^\p{L}\p{N}]*$/u.exec(text);
+  const before = adlib ? sylls.filter((s) => s.end <= adlib.index) : [];
+  return before.length > 0 ? before[before.length - 1]!.index : sylls.length - 1;
+}
+
+/**
+ * R-02: rhymes are searched within a quatrain (four verses; a stanza break starts a new one) and
+ * between the last verse of a quatrain and the first verse of the next, so distant chance matches do not count.
+ */
+const canRhyme = (a: BlockVerse, b: BlockVerse) => a.quatrain === b.quatrain || b.order === a.order + 1;
+
+/** Numbers quatrains in reading order; a stanza break (empty verse) ends the current one. */
+function quatrainsOf(verses: string[]): number[] {
+  let quatrain = -1;
+  let position = VERSES_PER_QUATRAIN;
+  return verses.map((text) => {
+    if (text.trim() === '') {
+      position = VERSES_PER_QUATRAIN;
+      return quatrain;
+    }
+    if (position === VERSES_PER_QUATRAIN) {
+      quatrain++;
+      position = 0;
+    }
+    position++;
+    return quatrain;
+  });
+}
 const MATCHING_PLACE_BONUS = 0.75;
 const placeInVerse = (sylls: Syllable[], k: number) => (sylls.length > 1 ? k / (sylls.length - 1) : 1);
 const VERSE_START_BONUS = 1.5;
@@ -136,20 +187,21 @@ const INSIDE_WORD_PENALTY = 0.25;
  * A rhyme is a run of syllables whose vowels match another run anywhere in the text; the further apart
  * the verses, the weaker the candidate. A run may end inside a word only if the other is a whole word ("li wy" ~ "Niby").
  */
-function findCandidates(block: { verse: number; sylls: Syllable[]; text: string }[]): Candidate[] {
+function findCandidates(block: BlockVerse[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (let i = 0; i < block.length; i++) {
     for (let j = i; j < block.length; j++) {
       const A = block[i]!;
       const B = block[j]!;
+      if (!canRhyme(A, B)) continue;
       for (const p of A.sylls) {
         for (const q of B.sylls) {
           if (i === j && q.index <= p.index) continue;
           const insideWord = p.wordFinal !== q.wordFinal;
           if (!p.wordFinal && !q.wordFinal) continue;
 
-          const aLineEnd = p.index === A.sylls.length - 1;
-          const bLineEnd = q.index === B.sylls.length - 1;
+          const aLineEnd = p.index === A.end;
+          const bLineEnd = q.index === B.end;
           let { a, b, gap } = extend(A.sylls, B.sylls, p.index, q.index, i === j, !insideWord && aLineEnd && bLineEnd);
           if (insideWord) {
             const length = p.wordFinal ? wordLength(A.sylls, p.index) : wordLength(B.sylls, q.index);
@@ -191,7 +243,7 @@ function findCandidates(block: { verse: number; sylls: Syllable[]; text: string 
 }
 
 /** Short matches are everywhere in Polish, so they need extra evidence to count as a rhyme. */
-function isAcceptable(a: Span, b: Span, data: Map<number, { sylls: Syllable[]; text: string }>): boolean {
+function isAcceptable(a: Span, b: Span, data: Map<number, BlockVerse>): boolean {
   const A = data.get(a.verse)!;
   const B = data.get(b.verse)!;
   const textA = spanText(A.text, A.sylls, a).toLowerCase();
@@ -205,19 +257,29 @@ function isAcceptable(a: Span, b: Span, data: Map<number, { sylls: Syllable[]; t
   if (!aWordEnd && !isWholeWord(B.sylls, b)) return false;
   if (!bWordEnd && !isWholeWord(A.sylls, a)) return false;
 
-  const aLineEnd = last(a) === A.sylls.length - 1;
-  const bLineEnd = last(b) === B.sylls.length - 1;
+  const aLineEnd = last(a) === A.end;
+  const bLineEnd = last(b) === B.end;
   const sameCoda = A.sylls[last(a)]!.coda === B.sylls[last(b)]!.coda;
 
-  if (length >= 3) return true;
-  if (aLineEnd && bLineEnd) return length === 2 || sameCoda;
-  if (length === 2 && first(a) === 0 && first(b) === 0 && a.verse !== b.verse) return true;
-  // A short rhyme inside a verse is easy to hit by chance; it counts when stressed syllables line up
-  // or when one side is a whole word ("Niby" ~ "li wy").
-  const stressAligned = a.items.some((item, k) => A.sylls[item.index]!.stressed && B.sylls[b.items[k]!.index]!.stressed);
-  const wholeWord = isWholeWord(A.sylls, a) || isWholeWord(B.sylls, b);
-  if (length === 2) return sameCoda && (stressAligned || wholeWord);
-  return aLineEnd && bLineEnd && sameCoda && a.verse !== b.verse;
+  if (aLineEnd && bLineEnd) return length >= 2 || sameCoda;
+  if (length >= 2 && first(a) === 0 && first(b) === 0 && a.verse !== b.verse) return true;
+  // A rhyme may close one verse and open the next ("ekipa" ~ "Wezwij nas").
+  if (length >= 2 && ((aLineEnd && first(b) === 0 && B.order === A.order + 1) || (bLineEnd && first(a) === 0 && A.order === B.order + 1))) {
+    return true;
+  }
+
+  // R-05: inside a verse vowels match by chance all the time, so a rhyme also has to keep the rhythm:
+  // stressed syllables on both sides in the same places, at least one such pair, no place stressed on one side only.
+  let stressedPairs = 0;
+  let mismatches = 0;
+  a.items.forEach((item, k) => {
+    const x = A.sylls[item.index]!.stressed;
+    const y = B.sylls[b.items[k]!.index]!.stressed;
+    if (x && y) stressedPairs++;
+    else if (x !== y) mismatches++;
+  });
+  if (length < 2 || stressedPairs === 0 || mismatches > 0) return false;
+  return length >= 3 || (sameCoda && !/[^\p{L}\p{N}\s]/u.test(spanText(A.text, A.sylls, a) + spanText(B.text, B.sylls, b)));
 }
 
 export function analyze(rawVerses: string[]): Analysis {
@@ -227,9 +289,20 @@ export function analyze(rawVerses: string[]): Analysis {
   const groups: RhymeGroup[] = [];
   const colorsByVerse: (number | undefined)[][] = verses.map((v) => new Array(v.length).fill(undefined));
   const groupByVerse: (number | undefined)[][] = verses.map((v) => new Array(v.length).fill(undefined));
+  const readingsByVerse = prepared.map((v) => v.readings.filter((r) => r.source === 'number'));
   {
-    const block = verses
-      .map((text, verse) => ({ verse, text, sylls: syllables[verse]! }))
+    const quatrains = quatrainsOf(verses);
+    const block: BlockVerse[] = verses
+      .map((text, verse) => ({
+        verse,
+        text,
+        sylls: syllables[verse]!,
+        quatrain: quatrains[verse]!,
+        order: 0,
+        end: lineEndOf(text, syllables[verse]!),
+      }))
+      .filter((v) => v.text.trim() !== '')
+      .map((v, order) => ({ ...v, order }))
       .filter((v) => v.sylls.length > 0);
     const data = new Map(block.map((v) => [v.verse, v]));
     // A color stands for a vowel pattern in the whole text ("ziomki" ~ "worki" share "o-i").
@@ -314,10 +387,10 @@ export function analyze(rawVerses: string[]): Analysis {
       .map((list) => list.sort((x, y) => x.verse - y.verse || first(x) - first(y)))
       .sort((x, y) => x[0]!.verse - y[0]!.verse || first(x[0]!) - first(y[0]!));
 
-    for (const list of ordered) {
-      // Colors follow the position from the end of the rhyme, so shorter members line up with longer ones.
-      const positions = Math.max(...list.flatMap((s) => s.items.map((i) => i.pos))) + 1;
-      const chunkOf = chunkByWords(list, positions, syllables);
+    for (const members of ordered) {
+      const whole = keepWholeChunks(members, syllables);
+      if (!whole) continue;
+      const { list, chunkOf } = whole;
       const multiplicity = Math.max(...chunkOf) + 1;
       const vowelAt = new Map<number, string>();
       for (const span of list)
@@ -367,9 +440,34 @@ export function analyze(rawVerses: string[]): Analysis {
     verses: verses.map((text, v) => ({
       text,
       syllableCount: syllables[v]!.length,
-      segments: toSegments(text, colorsByVerse[v]!, groupByVerse[v]!),
+      readings: readingsByVerse[v]!,
+      segments: toSegments(text, colorsByVerse[v]!, groupByVerse[v]!, readingsByVerse[v]!),
     })),
   };
+}
+
+/**
+ * K-05: a color chunk is one unit of the rhyme, so a member that covers only part of it ("rę" of "pa-rę"
+ * against "zim-ne") drops those syllables. Colors follow the position from the end of the rhyme, so
+ * shorter members line up with longer ones. Returns null when fewer than two members are left.
+ */
+function keepWholeChunks(members: Span[], syllables: Syllable[][]) {
+  let list = members;
+  for (;;) {
+    const positions = Math.max(...list.flatMap((s) => s.items.map((i) => i.pos))) + 1;
+    const chunkOf = chunkByWords(list, positions, syllables);
+    const chunkPositions = (chunk: number) => [...chunkOf.keys()].filter((pos) => chunkOf[pos] === chunk);
+    const trimmed = list
+      .map((span) => {
+        const covered = new Set(span.items.map((i) => i.pos));
+        const items = span.items.filter((i) => chunkPositions(chunkOf[i.pos]!).every((pos) => covered.has(pos)));
+        return items.length === span.items.length ? span : { ...span, items };
+      })
+      .filter((span) => span.items.length > 0);
+    if (trimmed.length < 2) return null;
+    if (trimmed.every((span, k) => span === list[k])) return { list, chunkOf };
+    list = trimmed;
+  }
 }
 
 /**
@@ -411,14 +509,22 @@ function chunkByWords(list: Span[], positions: number, syllables: Syllable[][]):
   return chunkOf;
 }
 
-function toSegments(text: string, colors: (number | undefined)[], groupIds: (number | undefined)[]): Segment[] {
+function toSegments(
+  text: string,
+  colors: (number | undefined)[],
+  groupIds: (number | undefined)[],
+  readings: Reading[],
+): Segment[] {
   const segments: Segment[] = [];
   for (let i = 0; i < text.length; i++) {
     const last = segments[segments.length - 1];
-    if (last && last.color === colors[i] && last.groupId === groupIds[i]) {
+    const reading = readings.find((r) => r.start <= i && i < r.end);
+    if (last && last.color === colors[i] && last.groupId === groupIds[i] && last.reading === reading?.spoken) {
       last.text += text[i];
     } else {
-      segments.push({ text: text[i]!, color: colors[i], groupId: groupIds[i] });
+      const segment: Segment = { text: text[i]!, color: colors[i], groupId: groupIds[i] };
+      if (reading) segment.reading = reading.spoken;
+      segments.push(segment);
     }
   }
   return segments;

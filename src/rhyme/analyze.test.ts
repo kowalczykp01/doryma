@@ -5,47 +5,55 @@ import { analyze, multiplicityOf } from './analyze';
 const vowels = (verse: string) => syllabify(verse).map((s) => s.vowel).join('');
 
 describe('syllabify', () => {
-  it('treats "i" before a vowel as softening', () => {
+  it('S-02: treats "i" before a vowel as softening', () => {
     expect(vowels('nie wiem')).toBe('ee');
     expect(vowels('pianino')).toBe('aio');
   });
 
-  it('normalizes vowels that sound alike', () => {
+  it('S-04: normalizes vowels that sound alike', () => {
     expect(vowels('góra są tę')).toBe('uaoe');
   });
 
-  it('skips words without vowels', () => {
+  it('S-01: skips words without vowels', () => {
     expect(vowels('w domu z tobą')).toBe('ouoo');
   });
 
-  it('splits consonant clusters and keeps digraphs together', () => {
+  it('S-03: splits consonant clusters and keeps digraphs together', () => {
     const verse = 'klatki szczęście';
     expect(syllabify(verse).map((s) => verse.slice(s.start, s.end))).toEqual(['klat', 'ki', 'szczę', 'ście']);
+  });
+
+  it('S-05: stresses the penultimate syllable and one-syllable words that are not clitics', () => {
+    expect(syllabify('chowaj mi rok').map((s) => s.stressed)).toEqual([true, false, false, true]);
+  });
+
+  it('S-06: normalizes the coda', () => {
+    expect(syllabify('mórz duch').map((s) => s.coda)).toEqual(['ż', 'h']);
   });
 });
 
 describe('multiplicityOf', () => {
-  it('maps syllable count to rhyme multiplicity', () => {
+  it('R-07: maps syllable count to rhyme multiplicity', () => {
     expect([1, 2, 3, 4, 5, 6, 7].map(multiplicityOf)).toEqual([1, 1, 2, 2, 3, 3, 4]);
   });
 });
 
 describe('analyze', () => {
-  it('finds a double rhyme at the end of verses', () => {
+  it('R-01: finds a double rhyme at the end of verses', () => {
     const { groups } = analyze(['Ciągle mam to w mojej głowie', 'Nic nie mówię, ale w twojej mowie']);
     const group = groups.find((g) => g.occurrences.some((o) => o.text.endsWith('mojej głowie')));
     expect(group?.occurrences.some((o) => o.text.endsWith('twojej mowie'))).toBe(true);
     expect(group?.multiplicity).toBeGreaterThanOrEqual(2);
   });
 
-  it('finds a rhyme at the end of one verse and the start of the next', () => {
+  it('R-02: finds a rhyme at the end of one verse and the start of the next', () => {
     const { groups } = analyze(['Wszystko co mam to moja ekipa', 'Wezwij nas, gdy trzeba, będziemy w pobliżu']);
     const group = groups.find((g) => g.occurrences.some((o) => o.text === 'ekipa'));
     expect(group?.occurrences.map((o) => o.text)).toEqual(['ekipa', 'Wezwij nas']);
     expect(group?.multiplicity).toBe(2);
   });
 
-  it('joins rhymes of different lengths that share an ending, skipping one extra syllable', () => {
+  it('W-03, R-04: joins rhymes of different lengths that share an ending, skipping one extra syllable', () => {
     const { groups, verses } = analyze([
       'Ty, urodziłem się w Polsce',
       'Tu gdzie lata są nieistniejące, zimy nieistniejące',
@@ -64,7 +72,7 @@ describe('analyze', () => {
     expect(colorOf(2, 'ry mie')).toBe(colorOf(1, 'istnie'));
   });
 
-  it('rhymes "i" with "y" and allows a non-rhyming syllable in the middle of an end rhyme', () => {
+  it('R-01, R-04: rhymes "i" with "y" and allows a non-rhyming syllable in the middle of an end rhyme', () => {
     const { groups, verses } = analyze(['Czipsy kranczips', 'Krzysztof Krawczyk']);
     const group = groups.find((g) => g.occurrences.some((o) => o.text === 'Czipsy kranczips'));
     expect(group?.occurrences.map((o) => o.text)).toEqual(['Czipsy kranczips', 'Krzysztof Krawczyk']);
@@ -78,7 +86,7 @@ describe('analyze', () => {
     expect(verses[1]!.segments.find((s) => s.text.includes('sztof'))?.color).toBeUndefined();
   });
 
-  it('allows two extra syllables on one side and lines up stressed syllables', () => {
+  it('R-04, K-03: allows two extra syllables on one side and lines up stressed syllables', () => {
     const { groups, verses } = analyze([
       'a kiedyś prawie przyklepali mi za worek rok',
       'wszystko wam zaprezentuję chowaj pałer pojnt',
@@ -96,7 +104,7 @@ describe('analyze', () => {
     expect(verses[1]!.segments.find((s) => s.text.includes('waj pa'))?.color).toBeUndefined();
   });
 
-  it('finds the pattern of a quatrain without forcing unstressed fillers into it', () => {
+  it('R-04, R-05: finds the pattern of a quatrain without forcing unstressed fillers into it', () => {
     const { groups, verses } = analyze([
       'stylów na hitmana i nie robię szoł',
       'w międzyczasie piszę płyty swoim kolegom',
@@ -105,14 +113,13 @@ describe('analyze', () => {
     ]);
     const group = groups.find((g) => g.occurrences.some((o) => o.text.endsWith('robię szoł')));
     expect(group?.occurrences.map((o) => o.verse)).toEqual([0, 1, 2, 3]);
-    expect(groups.some((g) => g.occurrences.some((o) => o.text === 'międzyczasie'))).toBe(true);
 
     // "mi" (i) must not share a color with "cho" (o).
     const colorOf = (verse: number, text: string) => verses[verse]!.segments.find((s) => s.text.includes(text))?.color;
     expect(colorOf(2, 'mi')).not.toBe(colorOf(3, 'cho'));
   });
 
-  it('colors whole words and rhymes word-sized runs inside longer words', () => {
+  it('K-01, K-02, R-03, R-05, W-04: colors whole words and rhymes word-sized runs inside longer words', () => {
     const { verses } = analyze([
       'Niby wyleciałem z rapgry a to plotki są jak chuj',
       'Nadal dzwonili wydawcy, label ziomki mamy swój',
@@ -127,8 +134,8 @@ describe('analyze', () => {
     expect(colorOf(2, 'a my')).toBe(colorOf(1, 'mamy'));
     expect(colorOf(2, 'susz')).toBe(colorOf(1, 'swój'));
     expect(colorOf(3, 'portki')).toBe(colorOf(3, 'worki'));
-    expect(colorOf(1, 'li wy')).toBe(colorOf(0, 'Niby'));
-    expect(colorOf(1, 'dzwoni')).toBe(colorOf(1, 'ziomki'));
+    // "Ni-by" ~ "dzwo-ni-li" keeps the stress in place, "li wy" does not (R-05).
+    expect(colorOf(1, 'nili')).toBe(colorOf(0, 'Niby'));
     // Same vowels share a color across rhymes, different vowels never do.
     expect(colorOf(3, 'worki')).toBe(colorOf(1, 'ziomki'));
     expect(colorOf(3, 'stów')).toBe(colorOf(1, 'swój'));
@@ -138,7 +145,7 @@ describe('analyze', () => {
     expect(colorOf(3, 'Za dwa')).toBe(colorOf(1, 'Nadal'));
   });
 
-  it('prefers rhymes between verses at matching places over rhymes inside one verse', () => {
+  it('W-02: prefers rhymes between verses at matching places over rhymes inside one verse', () => {
     const { verses } = analyze([
       'Nawet przyjaciel w kredki Ci nie daje',
       'Słów nie trzymasz za zębami, jesteś giętki to na razie',
@@ -154,7 +161,7 @@ describe('analyze', () => {
     expect(colorOf(3, 'zwale')).toBe(colorOf(0, 'daje'));
   });
 
-  it('keeps the o-e-o pattern of a quatrain in whole words', () => {
+  it('K-01: keeps the o-e-o pattern of a quatrain in whole words', () => {
     const { verses } = analyze([
       'stylów na hitmana i nie robię szoł',
       'w międzyczasie piszę płyty swoim kolegom',
@@ -164,7 +171,7 @@ describe('analyze', () => {
     expect(verses[1]!.segments.some((s) => s.text === 'kole' && s.color !== undefined)).toBe(true);
   });
 
-  it('lets a rhyme run through a whole verse', () => {
+  it('R-07, K-01: lets a rhyme run through a whole verse', () => {
     const { verses } = analyze([
       'Tu słyszysz ciągle drewno, marne gadki, wiesz jakie dziś rapsy',
       'Wmówili sobie że są gangsterami bez klamek #psychiatryk',
@@ -176,22 +183,63 @@ describe('analyze', () => {
     expect(colorOf(3, 'fono')).toBe(colorOf(2, 'flow co'));
   });
 
-  it('finds rhymes across the whole text, past quatrains and stanza breaks', () => {
-    const { verses, groups } = analyze([
+  it('R-02: searches rhymes within quatrains and across their border only', () => {
+    const { groups } = analyze([
       'Nocą to miasto zasypia jak dziecko',
-      'b',
-      'c',
-      'd',
-      '',
+      'raz',
+      'dwa',
+      'trzy',
       'Ja piszę te wersy i płynę tak lekko',
     ]);
-    expect(verses).toHaveLength(6);
-    expect(verses[4]?.segments).toEqual([]);
-    const group = groups.find((g) => g.occurrences.some((o) => o.text.endsWith('dziecko')));
-    expect(group?.occurrences.map((o) => o.verse)).toEqual([0, 5]);
+    expect(groups.some((g) => g.occurrences.some((o) => o.text.endsWith('lekko')))).toBe(false);
+
+    const border = analyze(['jeden', 'dwa', 'trzy', 'w mojej głowie', '', 'w twojej mowie', 'pięć']);
+    expect(border.verses[4]?.segments).toEqual([]);
+    const group = border.groups.find((g) => g.occurrences.some((o) => o.text === 'mojej głowie'));
+    expect(group?.occurrences.map((o) => o.verse)).toEqual([3, 5]);
   });
 
-  it('gives each vowel pattern its own color', () => {
+  it('R-05: drops chance matches that break the rhythm of the verse', () => {
+    const { verses, groups } = analyze([
+      'Kto dał Ci całego siebie w 4 *czwarty* tej muzyce? (no kto?!)',
+      'Jak to jest, że się nie znamy, a znasz moje życie?',
+      'Zakładam kajdan z logiem Simby na szyję',
+      'A pamiętam (no co?), jak z tego drwiłem',
+    ]);
+    const colored = (verse: number) => verses[verse]!.segments.filter((s) => s.color !== undefined).map((s) => s.text);
+    expect(colored(1)).not.toContain('jest, że');
+    expect(colored(1)).not.toContain('się nie');
+    expect(colored(1)).not.toContain('a znasz');
+    expect(colored(2)).not.toContain('kajdan');
+    const end = groups.find((g) => g.occurrences.some((o) => o.text === 'życie'));
+    expect(end?.occurrences.map((o) => o.text)).toEqual(['zyce', 'życie', 'szyję', 'drwiłem']);
+  });
+
+  it('R-08: ends a verse before a closing adlib in parentheses', () => {
+    const { verses } = analyze([
+      'I czemu czuję spokój tylko wtedy, kiedy mówisz, że kochasz? (Wiem czemu)',
+      'Tego słowa nie kupiła flota',
+    ]);
+    const colorOf = (verse: number, text: string) => verses[verse]!.segments.find((s) => s.text === text)?.color;
+    expect(colorOf(0, 'kochasz')).toBeDefined();
+    expect(colorOf(1, 'flota')).toBe(colorOf(0, 'kochasz'));
+  });
+
+  it('K-05: drops a member that covers only part of a color chunk', () => {
+    const { verses, groups } = analyze([
+      'Jak zobaczyłem pierwszą banię, to miałem zimne poty',
+      'Spłaciłem długi mamie, ziomalowi dałem parę groszy',
+      'Czemu, jak to piszę dziś, to dziwnie szklą mi się oczy?',
+    ]);
+    const colorOf = (verse: number, text: string) => verses[verse]!.segments.find((s) => s.text === text)?.color;
+    expect(verses[1]!.segments.find((s) => s.text.includes('parę'))?.color).toBeUndefined();
+    expect(colorOf(1, 'groszy')).toBe(colorOf(0, 'poty'));
+    expect(colorOf(2, 'mi się')).toBe(colorOf(0, 'zimne'));
+    const group = groups.find((g) => g.occurrences.some((o) => o.text === 'zimne poty'));
+    expect(group?.occurrences.map((o) => o.text)).toContain('groszy');
+  });
+
+  it('K-02: gives each vowel pattern its own color', () => {
     const { verses } = analyze(['Ciągle mam to w mojej głowie', 'Nic nie mówię, ale w twojej mowie']);
     const colored = verses[0]!.segments.filter((s) => s.color !== undefined);
     const mojej = colored.find((s) => s.text === 'mojej');
@@ -203,7 +251,7 @@ describe('analyze', () => {
     expect(ciagle?.color).toBeUndefined();
   });
 
-  it('does not treat repeated words as rhymes', () => {
+  it('R-06: does not treat repeated words as rhymes', () => {
     const { groups } = analyze(['robię to dla siebie', 'robię to dla siebie']);
     expect(groups.some((g) => g.occurrences.every((o) => o.text === g.occurrences[0]!.text))).toBe(false);
   });

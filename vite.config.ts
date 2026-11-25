@@ -14,8 +14,8 @@ export default defineConfig({
         short_name: 'DoRyma',
         description: 'Kolorowanie rymów wielokrotnych w polskich tekstach rapowych',
         lang: 'pl',
-        theme_color: '#14121a',
-        background_color: '#14121a',
+        theme_color: '#121214',
+        background_color: '#121214',
         display: 'standalone',
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
